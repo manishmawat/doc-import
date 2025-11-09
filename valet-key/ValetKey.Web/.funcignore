@@ -1,0 +1,7 @@
+.git
+.vscode
+bin/Debug
+obj
+deploy.zip
+local.settings.json
+*.log
