@@ -13,7 +13,7 @@ on:
   workflow_dispatch:  # Allows manual triggering
 
 env:
-  APP_LOCATION: "/UploaderDoc"  # Blazor WebAssembly project path
+  APP_LOCATION: "./UploaderDoc"  # Blazor WebAssembly project path
   API_LOCATION: ""  # No API needed for Blazor WASM
   OUTPUT_LOCATION: "wwwroot"  # Blazor WebAssembly output location
   DOTNET_VERSION: '9.0.x'  # .NET version
@@ -38,7 +38,16 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
-          
+
+      - name: Debug - List repository structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Repository contents:"
+          ls -la
+          echo "Looking for UploaderDoc folder:"
+          find . -name "*ploader*" -type d 2>/dev/null || echo "No UploaderDoc folder found"      
+
       - name: Restore dependencies
         run: |
           cd ${{ env.APP_LOCATION }}
