@@ -125,12 +125,18 @@ jobs:
           echo "✅ Deploying from: $DEPLOY_PATH"
           echo "Contents to deploy:"
           ls -la "$DEPLOY_PATH"
-
+          
+          # Verify critical files exist
+          if [ ! -f "$DEPLOY_PATH/index.html" ]; then
+            echo "❌ ERROR: index.html not found!"
+            exit 1
+          fi
+          
           # Get access token for deployment
           ACCESS_TOKEN=$(az account get-access-token --query accessToken -o tsv)
           
-          # Deploy using SWA CLI with Azure token
-          swa deploy ${{ env.APP_LOCATION }}/${{ env.OUTPUT_LOCATION }} \
+          # Deploy using the correct path (DEPLOY_PATH, not hardcoded)
+          swa deploy "$DEPLOY_PATH" \
             --subscription-id ${{ vars.AZURE_SUBSCRIPTION_ID }} \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
             --app-name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
