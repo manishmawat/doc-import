@@ -15,7 +15,7 @@ on:
 env:
   APP_LOCATION: "./UploaderDoc"  # Blazor WebAssembly project path
   API_LOCATION: ""  # No API needed for Blazor WASM
-  OUTPUT_LOCATION: "wwwroot"  # Blazor WebAssembly output location
+  OUTPUT_LOCATION: "bin/Release/net9.0/publish/wwwroot"  # Correct Blazor publish path
   DOTNET_VERSION: '9.0.x'  # .NET version
   AZURE_STATIC_WEB_APP_NAME: 'DocumentUploader'  # Replace with your Static Web App name
 
@@ -33,6 +33,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+          lfs: false
           
       - name: Setup .NET ${{ env.DOTNET_VERSION }}
         uses: actions/setup-dotnet@v4
@@ -56,10 +57,8 @@ jobs:
       - name: Build Blazor WebAssembly app
         run: |
           cd ${{ env.APP_LOCATION }}
-          dotnet publish -c Release -o ../publish
+          dotnet publish -c Release
         env:
-          # Add your build-time configuration here
-          # These will be embedded in the client-side app
           ASPNETCORE_ENVIRONMENT: Production
           
       - name: 'Log in to Azure with OIDC'
@@ -69,15 +68,20 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/cli@v2
-        with:
-          azcliversion: latest
-          inlineScript: |
-            az staticwebapp deploy \
-              --name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
-              --source ./publish/${{ env.OUTPUT_LOCATION }} \
-              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }}
+      - name: Deploy to Azure Static Web Apps via SWA CLI
+        run: |
+          # Install Static Web Apps CLI
+          npm install -g @azure/static-web-apps-cli
+          
+          # Get access token for deployment
+          ACCESS_TOKEN=$(az account get-access-token --query accessToken -o tsv)
+          
+          # Deploy using SWA CLI with Azure token
+          swa deploy ${{ env.APP_LOCATION }}/${{ env.OUTPUT_LOCATION }} \
+            --subscription-id ${{ vars.AZURE_SUBSCRIPTION_ID }} \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --app-name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
+            --no-use-keychain
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
@@ -96,8 +100,5 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           
       - name: Close Pull Request Environment
-        uses: Azure/cli@v2
-        with:
-          azcliversion: latest
-          inlineScript: |
-            echo "Pull request closed - cleanup completed"
+        run: |
+          echo "Pull request closed - cleanup completed"
