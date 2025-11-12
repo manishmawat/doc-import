@@ -3,13 +3,13 @@ name: Deploy UploaderDoc Blazor SPA to Azure Static Web Apps
 on:
   push:
     branches: [ main, master ]
-    paths: 
-      - 'UploaderDoc/**'  # Only trigger when UploaderDoc changes
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
-    branches: [ main, master ]
-    paths:
-      - 'UploaderDoc/**'
+  #   paths: 
+  #     - 'UploaderDoc/**'  # Only trigger when UploaderDoc changes
+  # pull_request:
+  #   types: [opened, synchronize, reopened, closed]
+  #   branches: [ main, master ]
+  #   paths:
+  #     - 'UploaderDoc/**'
   workflow_dispatch:  # Allows manual triggering
 
 env:
