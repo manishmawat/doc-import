@@ -75,13 +75,13 @@ jobs:
         run: |
           cd ${{ env.APP_LOCATION }}
           echo "=== Building Blazor WebAssembly app ==="
-          dotnet publish -c Release
+          dotnet publish -c Release -o ../publish-output
         env:
           ASPNETCORE_ENVIRONMENT: Production
 
       - name: Verify build output and prepare for deployment
         run: |
-          PUBLISH_PATH="${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot"
+          PUBLISH_PATH="./publish-output/wwwroot"
           
           echo "=== Verifying publish output at: $PUBLISH_PATH ==="
           
@@ -97,7 +97,7 @@ jobs:
             # Check for essential Blazor WebAssembly files
             if [ -d "$PUBLISH_PATH/_framework" ]; then
               echo "=== Framework files ==="
-              ls -la "$PUBLISH_PATH/_framework" | head -5
+              ls -la "$PUBLISH_PATH/_framework" 2>/dev/null | head -5 || true
               
               # Check for blazor.webassembly.js
               [ -f "$PUBLISH_PATH/_framework/blazor.webassembly.js" ] && echo "✅ blazor.webassembly.js found" || echo "❌ blazor.webassembly.js missing"
@@ -107,5 +107,63 @@ jobs:
             echo "=== Total files to deploy: $(find "$PUBLISH_PATH" -type f | wc -l) ==="
           else
             echo "❌ Publish directory not found at: $PUBLISH_PATH"
-            echo "Available directories:"
-            find ${{ env.APP_LOCATION }}/bin -type d -
+            echo "Available directories in publish output:"
+            find ./publish-output -type d 2>/dev/null || echo "No publish-output directory found"
+          fi
+
+      - name: 'Log in to Azure with OIDC'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Static Web Apps via SWA CLI
+        run: |
+          # Install Static Web Apps CLI
+          npm install -g @azure/static-web-apps-cli
+          
+          DEPLOY_PATH="./publish-output/wwwroot"
+          
+          if [ ! -d "$DEPLOY_PATH" ]; then
+            echo "❌ ERROR: Deploy path not found: $DEPLOY_PATH"
+            exit 1
+          fi
+          
+          echo "✅ Deploying from: $DEPLOY_PATH"
+          echo "Contents to deploy:"
+          ls -la "$DEPLOY_PATH"
+          
+          # Verify critical files exist
+          if [ ! -f "$DEPLOY_PATH/index.html" ]; then
+            echo "❌ ERROR: index.html not found in deployment directory!"
+            exit 1
+          fi
+          
+          # Deploy using SWA CLI with Azure token
+          swa deploy "$DEPLOY_PATH" \
+            --subscription-id ${{ vars.AZURE_SUBSCRIPTION_ID }} \
+            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --app-name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
+            --no-use-keychain \
+            --verbose
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    permissions:
+      id-token: write
+      contents: read
+    environment: dev
+    steps:
+      - name: 'Log in to Azure with OIDC'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          
+      - name: Close Pull Request Environment
+        run: |
+          echo "Pull request closed - cleanup completed"
