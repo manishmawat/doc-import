@@ -3,21 +3,12 @@ name: Deploy UploaderDoc Blazor SPA to Azure Static Web Apps
 on:
   push:
     branches: [ main, master ]
-  #   paths: 
-  #     - 'UploaderDoc/**'  # Only trigger when UploaderDoc changes
-  # pull_request:
-  #   types: [opened, synchronize, reopened, closed]
-  #   branches: [ main, master ]
-  #   paths:
-  #     - 'UploaderDoc/**'
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch:
 
 env:
-  APP_LOCATION: "./UploaderDoc"  # Blazor WebAssembly project path
-  API_LOCATION: ""  # No API needed for Blazor WASM
-  OUTPUT_LOCATION: "bin/Release/net9.0/publish/wwwroot"  # Correct Blazor publish path
-  DOTNET_VERSION: '9.0.x'  # .NET version
-  AZURE_STATIC_WEB_APP_NAME: 'DocumentUploader'  # Replace with your Static Web App name
+  APP_LOCATION: "./UploaderDoc"
+  DOTNET_VERSION: '9.0.x'
+  AZURE_STATIC_WEB_APP_NAME: 'DocumentUploader'
 
 jobs:
   build_and_deploy_job:
@@ -40,65 +31,82 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Debug - List repository structure
+      - name: Debug - Repository structure
         run: |
-          echo "Current directory:"
-          pwd
-          echo "Repository contents:"
+          echo "=== Repository root contents ==="
           ls -la
-          echo "Looking for UploaderDoc folder:"
-          find . -name "*ploader*" -type d 2>/dev/null || echo "No UploaderDoc folder found"      
+          echo "=== UploaderDoc folder contents ==="
+          ls -la ${{ env.APP_LOCATION }}
+          echo "=== UploaderDoc wwwroot contents ==="
+          ls -la ${{ env.APP_LOCATION }}/wwwroot
 
       - name: Restore dependencies
         run: |
           cd ${{ env.APP_LOCATION }}
           dotnet restore
 
-      - name: Configure app settings for production
+      - name: Create production configuration
         run: |
           cd ${{ env.APP_LOCATION }}
+          # Ensure wwwroot exists
+          mkdir -p wwwroot
           
-          # Create or update appsettings.Production.json with environment variables
-          cat > wwwroot/appsettings.Production.json << EOF
+          # Create appsettings.Production.json with proper values
+          cat > wwwroot/appsettings.Production.json << 'EOF'
           {
             "AzureAd": {
-              "ClientId": "${{ vars.AZURE_AD_CLIENT_ID }}",
-              "Authority": "${{ vars.AZURE_AD_AUTHORITY }}",
+              "ClientId": "YOUR_CLIENT_ID_PLACEHOLDER",
+              "Authority": "YOUR_AUTHORITY_PLACEHOLDER",
               "Scopes": ["openid", "profile", "offline_access"]
             },
             "BlobStorage": {
-              "SasApiEndpoint": "${{ vars.BLOB_STORAGE_SAS_API_ENDPOINT }}"
+              "SasApiEndpoint": "YOUR_ENDPOINT_PLACEHOLDER"
             }
           }
           EOF
           
-          echo "Generated appsettings.Production.json:"
-          cat wwwroot/appsettings.Production.json
+          # Replace placeholders (using different delimiter to avoid issues)
+          sed -i 's|YOUR_CLIENT_ID_PLACEHOLDER|${{ vars.AZURE_AD_CLIENT_ID }}|g' wwwroot/appsettings.Production.json
+          sed -i 's|YOUR_AUTHORITY_PLACEHOLDER|${{ vars.AZURE_AD_AUTHORITY }}|g' wwwroot/appsettings.Production.json  
+          sed -i 's|YOUR_ENDPOINT_PLACEHOLDER|${{ vars.BLOB_STORAGE_SAS_API_ENDPOINT }}|g' wwwroot/appsettings.Production.json
           
-      - name: Build Blazor WebAssembly app
+          echo "=== Created appsettings.Production.json ==="
+          cat wwwroot/appsettings.Production.json
+
+      - name: Build and Publish Blazor WebAssembly
         run: |
           cd ${{ env.APP_LOCATION }}
-          dotnet publish -c Release
+          echo "=== Building Blazor WebAssembly app ==="
+          dotnet publish -c Release -o ../publish-output
         env:
           ASPNETCORE_ENVIRONMENT: Production
-      
-      - name: Debug - Verify build output
+
+      - name: Verify build output
         run: |
-          echo "=== Checking build output directories ==="
-          echo "APP_LOCATION: ${{ env.APP_LOCATION }}"
-          echo "OUTPUT_LOCATION: ${{ env.OUTPUT_LOCATION }}"
+          echo "=== Publish output directory contents ==="
+          ls -la ./publish-output
           
-          echo "=== Directory structure after build ==="
-          find ${{ env.APP_LOCATION }} -name "wwwroot" -type d
-          
-          echo "=== Contents of publish directory ==="
-          ls -la ${{ env.APP_LOCATION }}/bin/Release/net9.0/ || echo "Release directory not found"
-          
-          echo "=== Contents of publish/wwwroot if exists ==="
-          ls -la ${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot || echo "publish/wwwroot not found"
-          
-          echo "=== Contents of wwwroot if exists ==="
-          ls -la ${{ env.APP_LOCATION }}/bin/Release/net9.0/wwwroot || echo "wwwroot not found"
+          if [ -d "./publish-output/wwwroot" ]; then
+            echo "=== wwwroot contents ==="
+            ls -la ./publish-output/wwwroot
+            
+            echo "=== Critical files check ==="
+            [ -f "./publish-output/wwwroot/index.html" ] && echo "✅ index.html found" || echo "❌ index.html missing"
+            [ -d "./publish-output/wwwroot/_framework" ] && echo "✅ _framework folder found" || echo "❌ _framework folder missing"
+            
+            if [ -f "./publish-output/wwwroot/index.html" ]; then
+              echo "=== index.html preview ==="
+              head -10 "./publish-output/wwwroot/index.html"
+            fi
+            
+            if [ -d "./publish-output/wwwroot/_framework" ]; then
+              echo "=== _framework contents ==="
+              ls -la "./publish-output/wwwroot/_framework" | head -5
+            fi
+          else
+            echo "❌ wwwroot not found in publish output!"
+            exit 1
+          fi
 
       - name: 'Log in to Azure with OIDC'
         uses: azure/login@v2
@@ -106,41 +114,42 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          
-      - name: Deploy to Azure Static Web Apps via SWA CLI
+
+      - name: Deploy to Azure Static Web Apps
         run: |
-          # Install Static Web Apps CLI
+          # Install SWA CLI
           npm install -g @azure/static-web-apps-cli
           
-          # Determine correct deployment path
-          if [ -d "${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot" ]; then
-            DEPLOY_PATH="${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot"
-          elif [ -d "${{ env.APP_LOCATION }}/bin/Release/net9.0/wwwroot" ]; then
-            DEPLOY_PATH="${{ env.APP_LOCATION }}/bin/Release/net9.0/wwwroot"
-          else
-            echo "❌ ERROR: No wwwroot directory found!"
-            exit 1
-          fi
+          DEPLOY_PATH="./publish-output/wwwroot"
           
-          echo "✅ Deploying from: $DEPLOY_PATH"
-          echo "Contents to deploy:"
-          ls -la "$DEPLOY_PATH"
+          echo "=== Deploying from: $DEPLOY_PATH ==="
+          echo "Files to deploy:"
+          find "$DEPLOY_PATH" -type f | head -20
           
-          # Verify critical files exist
-          if [ ! -f "$DEPLOY_PATH/index.html" ]; then
-            echo "❌ ERROR: index.html not found!"
-            exit 1
-          fi
-          
-          # Get access token for deployment
-          ACCESS_TOKEN=$(az account get-access-token --query accessToken -o tsv)
-          
-          # Deploy using the correct path (DEPLOY_PATH, not hardcoded)
+          # Deploy with verbose logging
           swa deploy "$DEPLOY_PATH" \
             --subscription-id ${{ vars.AZURE_SUBSCRIPTION_ID }} \
             --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
             --app-name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
-            --no-use-keychain
+            --no-use-keychain \
+            --verbose || {
+              echo "❌ SWA CLI deployment failed, trying alternative method..."
+              
+              # Alternative: Direct Azure CLI approach (if available)
+              if command -v az &> /dev/null; then
+                # Create a zip file for deployment
+                cd "$DEPLOY_PATH"
+                zip -r ../app-content.zip .
+                cd ..
+                
+                echo "✅ Created deployment package: app-content.zip"
+                echo "Package size: $(du -h app-content.zip)"
+                
+                # You can add REST API deployment here if needed
+              fi
+              
+              exit 1
+            }
 
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
@@ -159,5 +168,4 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           
       - name: Close Pull Request Environment
-        run: |
-          echo "Pull request closed - cleanup completed"
+        run: echo "Pull request closed - cleanup completed"
