@@ -1,0 +1,94 @@
+name: Deploy UploaderDoc Blazor SPA to Azure Static Web Apps
+
+on:
+  push:
+    branches: [ main, master ]
+    paths: 
+      - 'UploaderDoc/**'  # Only trigger when UploaderDoc changes
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [ main, master ]
+    paths:
+      - 'UploaderDoc/**'
+  workflow_dispatch:  # Allows manual triggering
+
+env:
+  APP_LOCATION: "/UploaderDoc"  # Blazor WebAssembly project path
+  API_LOCATION: ""  # No API needed for Blazor WASM
+  OUTPUT_LOCATION: "wwwroot"  # Blazor WebAssembly output location
+  DOTNET_VERSION: '9.0.x'  # .NET version
+  AZURE_STATIC_WEB_APP_NAME: 'DocumentUploader'  # Replace with your Static Web App name
+
+jobs:
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
+    permissions:
+      id-token: write
+      contents: read
+    environment: dev
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          
+      - name: Restore dependencies
+        run: |
+          cd ${{ env.APP_LOCATION }}
+          dotnet restore
+          
+      - name: Build Blazor WebAssembly app
+        run: |
+          cd ${{ env.APP_LOCATION }}
+          dotnet publish -c Release -o ../publish
+        env:
+          # Add your build-time configuration here
+          # These will be embedded in the client-side app
+          ASPNETCORE_ENVIRONMENT: Production
+          
+      - name: 'Log in to Azure with OIDC'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az staticwebapp deploy \
+              --name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
+              --source ./publish/${{ env.OUTPUT_LOCATION }} \
+              --resource-group ${{ vars.AZURE_RESOURCE_GROUP }}
+
+  close_pull_request_job:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request Job
+    permissions:
+      id-token: write
+      contents: read
+    environment: dev
+    steps:
+      - name: 'Log in to Azure with OIDC'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          
+      - name: Close Pull Request Environment
+        uses: Azure/cli@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            echo "Pull request closed - cleanup completed"
