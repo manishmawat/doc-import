@@ -81,7 +81,25 @@ jobs:
           dotnet publish -c Release
         env:
           ASPNETCORE_ENVIRONMENT: Production
+      
+      - name: Debug - Verify build output
+        run: |
+          echo "=== Checking build output directories ==="
+          echo "APP_LOCATION: ${{ env.APP_LOCATION }}"
+          echo "OUTPUT_LOCATION: ${{ env.OUTPUT_LOCATION }}"
           
+          echo "=== Directory structure after build ==="
+          find ${{ env.APP_LOCATION }} -name "wwwroot" -type d
+          
+          echo "=== Contents of publish directory ==="
+          ls -la ${{ env.APP_LOCATION }}/bin/Release/net9.0/ || echo "Release directory not found"
+          
+          echo "=== Contents of publish/wwwroot if exists ==="
+          ls -la ${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot || echo "publish/wwwroot not found"
+          
+          echo "=== Contents of wwwroot if exists ==="
+          ls -la ${{ env.APP_LOCATION }}/bin/Release/net9.0/wwwroot || echo "wwwroot not found"
+
       - name: 'Log in to Azure with OIDC'
         uses: azure/login@v2
         with:
@@ -94,6 +112,20 @@ jobs:
           # Install Static Web Apps CLI
           npm install -g @azure/static-web-apps-cli
           
+          # Determine correct deployment path
+          if [ -d "${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot" ]; then
+            DEPLOY_PATH="${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot"
+          elif [ -d "${{ env.APP_LOCATION }}/bin/Release/net9.0/wwwroot" ]; then
+            DEPLOY_PATH="${{ env.APP_LOCATION }}/bin/Release/net9.0/wwwroot"
+          else
+            echo "❌ ERROR: No wwwroot directory found!"
+            exit 1
+          fi
+          
+          echo "✅ Deploying from: $DEPLOY_PATH"
+          echo "Contents to deploy:"
+          ls -la "$DEPLOY_PATH"
+
           # Get access token for deployment
           ACCESS_TOKEN=$(az account get-access-token --query accessToken -o tsv)
           
