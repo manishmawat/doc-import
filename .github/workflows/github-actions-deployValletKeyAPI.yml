@@ -1,0 +1,56 @@
+# This workflow will build a .NET Core project and deploy it to an Azure Functions App on Windows or Linux when a commit is pushed to your default branch.
+#
+# This workflow assumes you have already created the target Azure Functions app.
+# For instructions see https://learn.microsoft.com/en-us/azure/azure-functions/create-first-function-vs-code-csharp?tabs=in-process
+
+name: Deploy ValetKey.Web to Azure Function App
+
+on:
+  push:
+    branches: [ main, master ]  # Replace with your actual default branch
+  workflow_dispatch:  # Allows manual triggering
+
+env:
+  AZURE_FUNCTIONAPP_NAME: 'doc-import2'   
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: './valet-key/ValetKey.Web'  # Use forward slashes for cross-platform compatibility
+  DOTNET_VERSION: '9.0.x'                   
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+        id-token: write
+        contents: read
+    environment: dev
+    
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: Setup DotNet ${{ env.DOTNET_VERSION }} Environment
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: 'Resolve Project Dependencies Using Dotnet'
+      shell: bash
+      run: |
+        cd '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
+        dotnet restore
+        dotnet build --configuration Release --output ./output
+        
+    - name: 'Log in to Azure with AZ CLI'
+      uses: azure/login@v2
+      with:
+            client-id: ${{ vars.AZURE_CLIENT_ID }}
+            tenant-id: ${{ vars.AZURE_TENANT_ID }}
+            subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+    - name: 'Deploy to Azure Function App'
+      uses: Azure/functions-action@v1
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: '${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/output'
+        # Uncomment if using Flex Consumption plan
+        scm-do-build-during-deployment: false
+        enable-oryx-build: false
