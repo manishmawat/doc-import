@@ -2,6 +2,43 @@
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
+<FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center" Style="height: 70vh;">
+    <FluentIcon Value="@(new Icons.Regular.Size48.DocumentAdd())" Color="Color.Accent" />
+    <FluentLabel Typo="Typography.H3" Color="Color.Accent">Welcome to UploaderDoc</FluentLabel>
+    
+    <AuthorizeView>
+        <Authorized>
+            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center">
+                <FluentLabel Typo="Typography.Body">Hello, @GetDisplayName(context.User)!</FluentLabel>
+                <FluentButton Appearance="Appearance.Accent" 
+                              IconStart="@(new Icons.Regular.Size20.DocumentAdd())"
+                              OnClick="@(() => Navigation.NavigateTo("/docimport"))">
+                    Go to Document Import
+                </FluentButton>
+            </FluentStack>
+        </Authorized>
+        <NotAuthorized>
+            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center">
+                <FluentLabel Typo="Typography.Body">Please sign in to access document upload features.</FluentLabel>
+                <FluentButton Appearance="Appearance.Accent" 
+                              IconStart="@(new Icons.Regular.Size20.Person())"
+                              OnClick="@(() => Navigation.NavigateToLogin("authentication/login"))">
+                    Sign In
+                </FluentButton>
+            </FluentStack>
+        </NotAuthorized>
+    </AuthorizeView>
+</FluentStack>
 
-Welcome to your Document uploader app.
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private string GetDisplayName(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return user.FindFirst("name")?.Value 
+            ?? user.FindFirst("preferred_username")?.Value 
+            ?? user.FindFirst("email")?.Value 
+            ?? user.Identity?.Name 
+            ?? "User";
+    }
+}

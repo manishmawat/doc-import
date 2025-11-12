@@ -1,0 +1,45 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@inject NavigationManager Navigation
+
+<AuthorizeView>
+    <Authorized>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+            <FluentPersona Name="@GetDisplayName(context.User)" 
+                          Status="PresenceStatus.Available" />
+            <FluentButton Appearance="Appearance.Outline" 
+                          IconStart="@(new Icons.Regular.Size16.ArrowExit())"
+                          OnClick="BeginLogOut">
+                Sign out
+            </FluentButton>
+        </FluentStack>
+    </Authorized>
+    <NotAuthorized>
+        <FluentButton Appearance="Appearance.Accent" 
+                      IconStart="@(new Icons.Regular.Size16.Person())"
+                      OnClick="BeginLogIn">
+            Sign in
+        </FluentButton>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private void BeginLogOut()
+    {
+        Navigation.NavigateToLogout("authentication/logout");
+    }
+
+    private void BeginLogIn()
+    {
+        Navigation.NavigateToLogin("authentication/login");
+    }
+
+    private string GetDisplayName(System.Security.Claims.ClaimsPrincipal user)
+    {
+        return user.FindFirst("name")?.Value 
+            ?? user.FindFirst("preferred_username")?.Value 
+            ?? user.FindFirst("email")?.Value 
+            ?? user.Identity?.Name 
+            ?? "User";
+    }
+}

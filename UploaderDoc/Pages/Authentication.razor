@@ -1,0 +1,57 @@
+﻿@page "/authentication/{action}"
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+
+<PageTitle>Authentication</PageTitle>
+
+<RemoteAuthenticatorView Action="@Action">
+    <LoggingIn>
+        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center" Style="height: 50vh;">
+            <FluentProgressRing />
+            <FluentLabel Typo="Typography.Body">Signing you in...</FluentLabel>
+        </FluentStack>
+    </LoggingIn>
+    <LogOut>
+        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center" Style="height: 50vh;">
+            <FluentProgressRing />
+            <FluentLabel Typo="Typography.Body">Signing you out...</FluentLabel>
+        </FluentStack>
+    </LogOut>
+    <LogOutSucceeded>
+        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center" Style="height: 50vh;">
+            <FluentIcon Value="@(new Icons.Regular.Size48.CheckmarkCircle())" Color="Color.Success" />
+            <FluentLabel Typo="Typography.H5">You have been successfully signed out</FluentLabel>
+            <FluentButton Appearance="Appearance.Accent" OnClick="ReturnToHome">
+                Return to Home
+            </FluentButton>
+        </FluentStack>
+    </LogOutSucceeded>
+    <LogOutFailed>
+        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center" Style="height: 50vh;">
+            <FluentIcon Value="@(new Icons.Regular.Size48.ErrorCircle())" Color="Color.Error" />
+            <FluentLabel Typo="Typography.H5">There was an error signing you out</FluentLabel>
+            <FluentButton Appearance="Appearance.Accent" OnClick="ReturnToHome">
+                Return to Home
+            </FluentButton>
+        </FluentStack>
+    </LogOutFailed>
+    <LogInFailed>
+        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center" Style="height: 50vh;">
+            <FluentIcon Value="@(new Icons.Regular.Size48.ErrorCircle())" Color="Color.Error" />
+            <FluentLabel Typo="Typography.H5">There was an error signing you in</FluentLabel>
+            <FluentLabel Typo="Typography.Body">Please try again or contact support if the problem persists.</FluentLabel>
+            <FluentButton Appearance="Appearance.Accent" OnClick="ReturnToHome">
+                Return to Home
+            </FluentButton>
+        </FluentStack>
+    </LogInFailed>
+</RemoteAuthenticatorView>
+
+@code {
+    [Parameter] public string? Action { get; set; }
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private void ReturnToHome()
+    {
+        Navigation.NavigateTo("/");
+    }
+}
