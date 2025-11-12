@@ -1,0 +1,21 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html"
+  },
+  "routes": [
+    {
+      "route": "/authentication/*",
+      "allowedRoles": ["anonymous"]
+    },
+    {
+      "route": "/docimport",
+      "allowedRoles": ["authenticated"]
+    }
+  ],
+  "responseOverrides": {
+    "401": {
+      "redirect": "/authentication/login",
+      "statusCode": 302
+    }
+  }
+}

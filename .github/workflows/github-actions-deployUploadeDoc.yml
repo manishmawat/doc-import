@@ -1,169 +1,76 @@
-name: Deploy UploaderDoc Blazor SPA to Azure Static Web Apps
+# This workflow will build and push a web application to an Azure Static Web App when you change your code.
+#
+# This workflow assumes you have already created the target Azure Static Web App.
+# For instructions see https://docs.microsoft.com/azure/static-web-apps/get-started-portal?tabs=vanilla-javascript
+#
+# To configure this workflow:
+#
+# 1. Set up a secret in your repository named AZURE_STATIC_WEB_APPS_API_TOKEN with the value of your Static Web Apps deployment token.
+#    For instructions on obtaining the deployment token see: https://docs.microsoft.com/azure/static-web-apps/deployment-token-management
+#
+# 3. Change the values for the APP_LOCATION, API_LOCATION and APP_ARTIFACT_LOCATION, AZURE_STATIC_WEB_APPS_API_TOKEN environment variables (below).
+#    For instructions on setting up the appropriate configuration values go to https://docs.microsoft.com/azure/static-web-apps/front-end-frameworks
+name: Deploy web app to Azure Static Web Apps
 
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch:
+    branches: [ "main" ]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [ "main" ]
 
+# Environment variables available to all jobs and steps in this workflow
 env:
   APP_LOCATION: "./UploaderDoc"
-  DOTNET_VERSION: '9.0.x'
-  AZURE_STATIC_WEB_APP_NAME: 'DocumentUploader'
+  API_LOCATION: ""  # Empty since you don't have API functions in this workflow
+  APP_ARTIFACT_LOCATION: "wwwroot"  # Changed from "build" to "wwwroot"
+  AZURE_STATIC_WEB_APPS_API_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+
+permissions:
+  contents: read
 
 jobs:
   build_and_deploy_job:
+    permissions:
+      contents: read
+      pull-requests: write
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
-    permissions:
-      id-token: write
-      contents: read
-    environment: dev
-    
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
-          lfs: false
-          
-      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+      
+      - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Debug - Repository structure
-        run: |
-          echo "=== Repository root contents ==="
-          ls -la
-          echo "=== UploaderDoc folder contents ==="
-          ls -la ${{ env.APP_LOCATION }}
-
+          dotnet-version: '9.0.x'
+      
       - name: Restore dependencies
-        run: |
-          cd ${{ env.APP_LOCATION }}
-          dotnet restore
-
-      - name: Create production configuration
-        run: |
-          cd ${{ env.APP_LOCATION }}
-          # Ensure wwwroot exists
-          mkdir -p wwwroot
-          
-          # Create appsettings.Production.json with proper values
-          cat > wwwroot/appsettings.Production.json << 'EOF'
-          {
-            "AzureAd": {
-              "ClientId": "YOUR_CLIENT_ID_PLACEHOLDER",
-              "Authority": "YOUR_AUTHORITY_PLACEHOLDER",
-              "Scopes": ["openid", "profile", "offline_access"]
-            },
-            "BlobStorage": {
-              "SasApiEndpoint": "YOUR_ENDPOINT_PLACEHOLDER"
-            }
-          }
-          EOF
-          
-          # Replace placeholders (using different delimiter to avoid issues)
-          sed -i 's|YOUR_CLIENT_ID_PLACEHOLDER|${{ vars.AZURE_AD_CLIENT_ID }}|g' wwwroot/appsettings.Production.json
-          sed -i 's|YOUR_AUTHORITY_PLACEHOLDER|${{ vars.AZURE_AD_AUTHORITY }}|g' wwwroot/appsettings.Production.json  
-          sed -i 's|YOUR_ENDPOINT_PLACEHOLDER|${{ vars.BLOB_STORAGE_SAS_API_ENDPOINT }}|g' wwwroot/appsettings.Production.json
-          
-          echo "=== Created appsettings.Production.json ==="
-          cat wwwroot/appsettings.Production.json
-
-      - name: Build and Publish Blazor WebAssembly
-        run: |
-          cd ${{ env.APP_LOCATION }}
-          echo "=== Building Blazor WebAssembly app ==="
-          dotnet publish -c Release -o ../publish-output
-        env:
-          ASPNETCORE_ENVIRONMENT: Production
-
-      - name: Verify build output and prepare for deployment
-        run: |
-          PUBLISH_PATH="./publish-output/wwwroot"
-          
-          echo "=== Verifying publish output at: $PUBLISH_PATH ==="
-          
-          if [ -d "$PUBLISH_PATH" ]; then
-            echo "✅ Publish directory found"
-            echo "=== Contents ==="
-            ls -la "$PUBLISH_PATH"
-            
-            echo "=== Critical files check ==="
-            [ -f "$PUBLISH_PATH/index.html" ] && echo "✅ index.html found" || echo "❌ index.html missing"
-            [ -d "$PUBLISH_PATH/_framework" ] && echo "✅ _framework folder found" || echo "❌ _framework folder missing"
-            
-            # Check for essential Blazor WebAssembly files
-            if [ -d "$PUBLISH_PATH/_framework" ]; then
-              echo "=== Framework files ==="
-              ls -la "$PUBLISH_PATH/_framework" 2>/dev/null | head -5 || true
-              
-              # Check for blazor.webassembly.js
-              [ -f "$PUBLISH_PATH/_framework/blazor.webassembly.js" ] && echo "✅ blazor.webassembly.js found" || echo "❌ blazor.webassembly.js missing"
-            fi
-            
-            # Display file count for deployment verification
-            echo "=== Total files to deploy: $(find "$PUBLISH_PATH" -type f | wc -l) ==="
-          else
-            echo "❌ Publish directory not found at: $PUBLISH_PATH"
-            echo "Available directories in publish output:"
-            find ./publish-output -type d 2>/dev/null || echo "No publish-output directory found"
-          fi
-
-      - name: 'Log in to Azure with OIDC'
-        uses: azure/login@v2
+        run: dotnet restore ./UploaderDoc/UploaderDoc.csproj
+      
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy to Azure Static Web Apps via SWA CLI
-        run: |
-          # Install Static Web Apps CLI
-          npm install -g @azure/static-web-apps-cli
-          
-          DEPLOY_PATH="./publish-output/wwwroot"
-          
-          if [ ! -d "$DEPLOY_PATH" ]; then
-            echo "❌ ERROR: Deploy path not found: $DEPLOY_PATH"
-            exit 1
-          fi
-          
-          echo "✅ Deploying from: $DEPLOY_PATH"
-          echo "Contents to deploy:"
-          ls -la "$DEPLOY_PATH"
-          
-          # Verify critical files exist
-          if [ ! -f "$DEPLOY_PATH/index.html" ]; then
-            echo "❌ ERROR: index.html not found in deployment directory!"
-            exit 1
-          fi
-          
-          # Deploy using SWA CLI with Azure token
-          swa deploy "$DEPLOY_PATH" \
-            --subscription-id ${{ vars.AZURE_SUBSCRIPTION_ID }} \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-            --app-name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
-            --no-use-keychain \
-            --verbose
+          azure_static_web_apps_api_token: ${{ env.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: ${{ env.APP_LOCATION }}
+          api_location: ${{ env.API_LOCATION }}
+          app_artifact_location: ${{ env.APP_ARTIFACT_LOCATION }}
 
   close_pull_request_job:
+    permissions:
+      contents: none
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
     name: Close Pull Request Job
-    permissions:
-      id-token: write
-      contents: read
-    environment: dev
     steps:
-      - name: 'Log in to Azure with OIDC'
-        uses: azure/login@v2
+      - name: Close Pull Request
+        id: closepullrequest
+        uses: Azure/static-web-apps-deploy@v1
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          
-      - name: Close Pull Request Environment
-        run: |
-          echo "Pull request closed - cleanup completed"
+          azure_static_web_apps_api_token: ${{ env.AZURE_STATIC_WEB_APPS_API_TOKEN }} # secret containing api token for app
+          action: "close"
