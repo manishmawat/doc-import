@@ -37,8 +37,6 @@ jobs:
           ls -la
           echo "=== UploaderDoc folder contents ==="
           ls -la ${{ env.APP_LOCATION }}
-          echo "=== UploaderDoc wwwroot contents ==="
-          ls -la ${{ env.APP_LOCATION }}/wwwroot
 
       - name: Restore dependencies
         run: |
@@ -77,95 +75,37 @@ jobs:
         run: |
           cd ${{ env.APP_LOCATION }}
           echo "=== Building Blazor WebAssembly app ==="
-          dotnet publish -c Release -o ../publish-output
+          dotnet publish -c Release
         env:
           ASPNETCORE_ENVIRONMENT: Production
 
-      - name: Verify build output
+      - name: Verify build output and prepare for deployment
         run: |
-          echo "=== Publish output directory contents ==="
-          ls -la ./publish-output
+          PUBLISH_PATH="${{ env.APP_LOCATION }}/bin/Release/net9.0/publish/wwwroot"
           
-          if [ -d "./publish-output/wwwroot" ]; then
-            echo "=== wwwroot contents ==="
-            ls -la ./publish-output/wwwroot
+          echo "=== Verifying publish output at: $PUBLISH_PATH ==="
+          
+          if [ -d "$PUBLISH_PATH" ]; then
+            echo "✅ Publish directory found"
+            echo "=== Contents ==="
+            ls -la "$PUBLISH_PATH"
             
             echo "=== Critical files check ==="
-            [ -f "./publish-output/wwwroot/index.html" ] && echo "✅ index.html found" || echo "❌ index.html missing"
-            [ -d "./publish-output/wwwroot/_framework" ] && echo "✅ _framework folder found" || echo "❌ _framework folder missing"
+            [ -f "$PUBLISH_PATH/index.html" ] && echo "✅ index.html found" || echo "❌ index.html missing"
+            [ -d "$PUBLISH_PATH/_framework" ] && echo "✅ _framework folder found" || echo "❌ _framework folder missing"
             
-            if [ -f "./publish-output/wwwroot/index.html" ]; then
-              echo "=== index.html preview ==="
-              head -10 "./publish-output/wwwroot/index.html"
+            # Check for essential Blazor WebAssembly files
+            if [ -d "$PUBLISH_PATH/_framework" ]; then
+              echo "=== Framework files ==="
+              ls -la "$PUBLISH_PATH/_framework" | head -5
+              
+              # Check for blazor.webassembly.js
+              [ -f "$PUBLISH_PATH/_framework/blazor.webassembly.js" ] && echo "✅ blazor.webassembly.js found" || echo "❌ blazor.webassembly.js missing"
             fi
             
-            if [ -d "./publish-output/wwwroot/_framework" ]; then
-              echo "=== _framework contents ==="
-              ls -la "./publish-output/wwwroot/_framework" | head -5
-            fi
+            # Display file count for deployment verification
+            echo "=== Total files to deploy: $(find "$PUBLISH_PATH" -type f | wc -l) ==="
           else
-            echo "❌ wwwroot not found in publish output!"
-            exit 1
-          fi
-
-      - name: 'Log in to Azure with OIDC'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy to Azure Static Web Apps
-        run: |
-          # Install SWA CLI
-          npm install -g @azure/static-web-apps-cli
-          
-          DEPLOY_PATH="./publish-output/wwwroot"
-          
-          echo "=== Deploying from: $DEPLOY_PATH ==="
-          echo "Files to deploy:"
-          find "$DEPLOY_PATH" -type f | head -20
-          
-          # Deploy with verbose logging
-          swa deploy "$DEPLOY_PATH" \
-            --subscription-id ${{ vars.AZURE_SUBSCRIPTION_ID }} \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
-            --app-name ${{ env.AZURE_STATIC_WEB_APP_NAME }} \
-            --no-use-keychain \
-            --verbose || {
-              echo "❌ SWA CLI deployment failed, trying alternative method..."
-              
-              # Alternative: Direct Azure CLI approach (if available)
-              if command -v az &> /dev/null; then
-                # Create a zip file for deployment
-                cd "$DEPLOY_PATH"
-                zip -r ../app-content.zip .
-                cd ..
-                
-                echo "✅ Created deployment package: app-content.zip"
-                echo "Package size: $(du -h app-content.zip)"
-                
-                # You can add REST API deployment here if needed
-              fi
-              
-              exit 1
-            }
-
-  close_pull_request_job:
-    if: github.event_name == 'pull_request' && github.event.action == 'closed'
-    runs-on: ubuntu-latest
-    name: Close Pull Request Job
-    permissions:
-      id-token: write
-      contents: read
-    environment: dev
-    steps:
-      - name: 'Log in to Azure with OIDC'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-          
-      - name: Close Pull Request Environment
-        run: echo "Pull request closed - cleanup completed"
+            echo "❌ Publish directory not found at: $PUBLISH_PATH"
+            echo "Available directories:"
+            find ${{ env.APP_LOCATION }}/bin -type d -
