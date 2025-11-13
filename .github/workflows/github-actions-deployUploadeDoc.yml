@@ -1,15 +1,4 @@
 # This workflow will build and push a web application to an Azure Static Web App when you change your code.
-#
-# This workflow assumes you have already created the target Azure Static Web App.
-# For instructions see https://docs.microsoft.com/azure/static-web-apps/get-started-portal?tabs=vanilla-javascript
-#
-# To configure this workflow:
-#
-# 1. Set up a secret in your repository named AZURE_STATIC_WEB_APPS_API_TOKEN with the value of your Static Web Apps deployment token.
-#    For instructions on obtaining the deployment token see: https://docs.microsoft.com/azure/static-web-apps/deployment-token-management
-#
-# 3. Change the values for the APP_LOCATION, API_LOCATION and APP_ARTIFACT_LOCATION, AZURE_STATIC_WEB_APPS_API_TOKEN environment variables (below).
-#    For instructions on setting up the appropriate configuration values go to https://docs.microsoft.com/azure/static-web-apps/front-end-frameworks
 name: Deploy web app to Azure Static Web Apps
 
 on:
@@ -22,8 +11,8 @@ on:
 # Environment variables available to all jobs and steps in this workflow
 env:
   APP_LOCATION: "./UploaderDoc"
-  API_LOCATION: ""  # Empty since you don't have API functions in this workflow
-  APP_ARTIFACT_LOCATION: "wwwroot"  # Changed from "build" to "wwwroot"
+  API_LOCATION: ""
+  APP_ARTIFACT_LOCATION: "dist"  # Changed from wwwroot to dist for Blazor WASM
 
 permissions:
   contents: read
@@ -40,25 +29,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+          lfs: false
       
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
       
-      - name: Restore dependencies
-        run: dotnet restore ./UploaderDoc/UploaderDoc.csproj
-      
-      - name: Verify deployment token exists
+      - name: Verify deployment token format
         run: |
-          if [ -z "${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}" ]; then
-            echo "ERROR: AZURE_STATIC_WEB_APPS_API_TOKEN secret is not set or is empty"
+          TOKEN="${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}"
+          if [ -z "$TOKEN" ]; then
+            echo "❌ ERROR: AZURE_STATIC_WEB_APPS_API_TOKEN secret is not set"
             exit 1
-          else
-            echo "Deployment token is available (length: ${#AZURE_STATIC_WEB_APPS_API_TOKEN})"
           fi
-        env:
-          AZURE_STATIC_WEB_APPS_API_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          echo "✅ Deployment token is available"
       
       - name: Build And Deploy
         id: builddeploy
@@ -70,6 +55,11 @@ jobs:
           app_location: ${{ env.APP_LOCATION }}
           api_location: ${{ env.API_LOCATION }}
           app_artifact_location: ${{ env.APP_ARTIFACT_LOCATION }}
+          # Blazor WASM specific settings
+          app_build_command: 'dotnet publish -c Release -o published --nologo'
+          output_location: 'published/wwwroot'
+          skip_app_build: false
+          skip_api_build: true
 
   close_pull_request_job:
     permissions:
@@ -84,4 +74,5 @@ jobs:
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "close"
