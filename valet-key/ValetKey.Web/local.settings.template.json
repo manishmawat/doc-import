@@ -3,6 +3,14 @@
     "Values": {
         "AzureWebJobsStorage": "UseDevelopmentStorage=true",
         "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
-        "UploadStorage__blobServiceUri": "https://STORAGE_ACCOUNT_NAME.blob.core.windows.net"
+        "UploadStorage__blobServiceUri": "https://YOUR_STORAGE_ACCOUNT.blob.core.windows.net",
+        "AzureAd__Instance": "https://YOUR_B2C_TENANT.ciamlogin.com/",
+        "AzureAd__TenantId": "YOUR_TENANT_ID_HERE",
+        "AzureAd__ClientId": "YOUR_CLIENT_ID_HERE",
+        "AzureAd__Audience": "api://YOUR_CLIENT_ID_HERE/YOUR_SCOPE"
+    },
+    "Host": {
+        "CORS": "http://localhost:5168,http://localhost:3000,http://localhost:4200,http://localhost:8080,https://localhost:5168,https://localhost:3000,https://localhost:4200,https://localhost:8080",
+        "CORSCredentials": true
     }
 }
