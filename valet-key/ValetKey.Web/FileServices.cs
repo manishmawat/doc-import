@@ -4,6 +4,8 @@ using Azure.Storage.Sas;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
+using System.Net;
+using Authentication.Library.Middleware;
 
 namespace ValetKey.Web
 {
@@ -11,24 +13,46 @@ namespace ValetKey.Web
     {
         private readonly ILogger _logger = loggerFactory.CreateLogger<FileServices>();
 
-        // WARNING: This route would normally require its own AuthZ so that you are handing out valet keys
-        //          to only authorized clients. For example, using App Service authentication integrated with
-        //          the IdP requirements aligned with your clients.
         [Function(nameof(FileServices))]
-        public async Task<StorageEntitySas> RunAsync(
+        [RequireAuthentication]
+        public async Task<HttpResponseData> RunAsync(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "file-services/access")] HttpRequestData req,
             [BlobInput("uploads", Connection = "UploadStorage")] BlobContainerClient blobContainerClient,
-            CancellationToken cancellationToken
-            )
+            FunctionContext executionContext,
+            CancellationToken cancellationToken)
         {
             _logger.LogInformation("Processing new request for a valet key.");
 
-            return await GetSharedAccessReferenceForUploadAsync(blobContainerClient, Guid.NewGuid().ToString(), cancellationToken);
+            try
+            {
+                var userInfo = executionContext.GetRequiredAuthenticatedUser();
+                
+                _logger.LogInformation("Request from user: {userId}, Email: {email}", 
+                    userInfo.UserId, userInfo.Email);
+
+                var blobName = $"{userInfo.UserId}/{Guid.NewGuid()}";
+                
+                var sasToken = await GetSharedAccessReferenceForUploadAsync(blobContainerClient, blobName, cancellationToken);
+                
+                var response = req.CreateResponse(HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(sasToken);
+                return response;
+            }
+            catch (Authentication.Library.Exceptions.AuthenticationException)
+            {
+                var response = req.CreateResponse(HttpStatusCode.Unauthorized);
+                await response.WriteStringAsync("Authentication required");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing valet key request");
+                var response = req.CreateResponse(HttpStatusCode.InternalServerError);
+                await response.WriteStringAsync("Internal server error");
+                return response;
+            }
         }
 
-        /// <summary>
-        /// Return an access key that allows the caller to upload a file to this specific destination for defined period of time (~three minutes).
-        /// </summary>
         private async Task<StorageEntitySas> GetSharedAccessReferenceForUploadAsync(BlobContainerClient blobContainerClient, string blobName, CancellationToken cancellationToken)
         {
             var blobServiceClient = blobContainerClient.GetParentBlobServiceClient();
@@ -37,11 +61,6 @@ namespace ValetKey.Web
             var userDelegationKey = await blobServiceClient.GetUserDelegationKeyAsync(DateTimeOffset.UtcNow.AddMinutes(-3),
                                                                                       DateTimeOffset.UtcNow.AddMinutes(3), cancellationToken);
 
-            // Limit the scope of this SaS token to the following:
-            //  - The specific blob
-            //  - Create permissions only
-            //  - In the next ~three minutes
-            //  - Over HTTPs
             var blobSasBuilder = new BlobSasBuilder
             {
                 BlobContainerName = blobContainerClient.Name,
