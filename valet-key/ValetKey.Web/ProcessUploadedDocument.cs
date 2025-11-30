@@ -8,6 +8,7 @@ using System.Net;
 using Authentication.Library.Middleware;
 using Azure.Messaging.EventGrid;
 using System.Diagnostics.Tracing;
+using System.Text.Json;
 
 namespace ValetKey.Web;
 
@@ -19,14 +20,26 @@ public class ProcessUploadedDocument(ILoggerFactory loggerFactory)
     [Function(nameof(ProcessUploadedDocument))]
     public async Task RunAsync(
         [EventGridTrigger] EventGridEvent eventGridEvent,
-        [BlobInput("uploads/{data.url}", Connection = "UploadStorage")] BlobClient blobClient,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("Processing uploaded document event: {eventId}", eventGridEvent.Id);
 
         try
         {
-            // Example processing logic: log blob name and size
+            // Extract blob information from the Event Grid event
+            var eventData = JsonSerializer.Deserialize<JsonElement>(eventGridEvent.Data);
+            var blobUrl = eventData.GetProperty("url").GetString();
+            
+            if (string.IsNullOrEmpty(blobUrl))
+            {
+                _logger.LogWarning("No blob URL found in event data");
+                return;
+            }
+
+            // Create blob client from the URL
+            var blobClient = new BlobClient(new Uri(blobUrl));
+            
+            // Get blob properties
             var properties = await blobClient.GetPropertiesAsync(cancellationToken: cancellationToken);
             _logger.LogInformation("Uploaded blob name: {blobName}, Size: {blobSize} bytes", 
                 blobClient.Name, properties.Value.ContentLength);
